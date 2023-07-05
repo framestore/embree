@@ -47,8 +47,8 @@ namespace embree
           const Precalculations& pre, const Vec4vf<M>& v0, const Epilog& epilog)
       {
         vbool<M> valid = valid_i;
-
         const vfloat<M> rd2    = rcp(dot(ray.dir, ray.dir));
+
         const Vec3vf<M> ray_org(ray.org.x, ray.org.y, ray.org.z);
         const Vec3vf<M> ray_dir(ray.dir.x, ray.dir.y, ray.dir.z);
         const Vec3vf<M> center = v0.xyz();
@@ -64,11 +64,12 @@ namespace embree
           return false;
 
         const vfloat<M> td      = sqrt((r2 - l2) * rd2);
-        const vfloat<M> t_front = projC0 - td;
-        const vfloat<M> t_back  = projC0 + td;
+        const vfloat<M> rprojC0 = rcp(projC0);
+        const vfloat<M> t_front = 1.0 - td * rprojC0;
+        const vfloat<M> t_back  = 1.0 + td * rprojC0;
 
-        const vbool<M> valid_front = valid & (ray.tnear() <= t_front) & (t_front <= ray.tfar);
-        const vbool<M> valid_back  = valid & (ray.tnear() <= t_back ) & (t_back  <= ray.tfar);
+        const vbool<M> valid_front = valid & (ray.tnear() * rprojC0 <= t_front) & (t_front <= ray.tfar * rprojC0);
+        const vbool<M> valid_back  = valid & (ray.tnear() * rprojC0 <= t_back) & (t_back  <= ray.tfar * rprojC0);
 
         /* check if there is a first hit */
         const vbool<M> valid_first = valid_front | valid_back;
@@ -80,20 +81,20 @@ namespace embree
         const vfloat<M> td_back  = +td;
         const vfloat<M> t_first  = select(valid_front, t_front, t_back);
         const Vec3vf<M> Ng_first = select(valid_front, td_front, td_back) * ray_dir - perp;
-        SphereIntersectorHitM<M> hit(t_first, Ng_first);
+        SphereIntersectorHitM<M> hit(t_first * projC0, Ng_first);
 
         /* invoke intersection filter for first hit */
         const bool is_hit_first = epilog(valid_first, hit);
                 
         /* check for possible second hits before potentially accepted hit */
         const vfloat<M> t_second = t_back;
-        const vbool<M> valid_second = valid_front & valid_back & (t_second <= ray.tfar);
+        const vbool<M> valid_second = valid_front & valid_back & (t_second <= ray.tfar * rprojC0);
         if (unlikely(none(valid_second)))
           return is_hit_first;
 
         /* invoke intersection filter for second hit */
         const Vec3vf<M> Ng_second = td_back * ray_dir - perp;
-        hit = SphereIntersectorHitM<M> (t_second, Ng_second);
+        hit = SphereIntersectorHitM<M> (t_second * projC0, Ng_second);
         const bool is_hit_second = epilog(valid_second, hit);
         
         return is_hit_first | is_hit_second;
