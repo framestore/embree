@@ -1,0 +1,10 @@
+#!/bin/sh
+#
+# Create a distribution archive for embree
+# 
+
+mkdir -p dist
+V=$(git describe --abbrev=0)
+echo "Creating distribution archive of embree $V"
+git archive --prefix=embree-$V/ HEAD \
+| gzip > dist/embree-$V.tar.gz
